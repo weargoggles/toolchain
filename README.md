@@ -18,7 +18,7 @@ Tags are `<tool>-v<version>`, e.g. `weave-v0.7.0`. Each carries
 |---|---|
 | `x86_64-unknown-linux-gnu` | ubuntu-22.04 (glibc 2.35, so older hosts still run it) |
 | `aarch64-unknown-linux-gnu` | ubuntu-22.04-arm |
-| `aarch64-apple-darwin` | macos-14 |
+| `aarch64-apple-darwin` | macos-15 |
 
 ## Adding a version
 
