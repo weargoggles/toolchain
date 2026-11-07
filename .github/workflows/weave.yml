@@ -1,0 +1,69 @@
+name: weave
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: upstream crate version, e.g. 0.7.0
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weave-${{ inputs.version }}
+
+env:
+  VERSION: ${{ inputs.version }}
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, runner: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-22.04-arm }
+          - { target: aarch64-apple-darwin, runner: macos-14 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - name: validate version
+        run: '[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "bad version: $VERSION"; exit 1; }'
+
+      - name: build
+        run: cargo install --locked --root out "weave-driver@$VERSION" "weave-cli@$VERSION"
+
+      # The binaries sit at the archive root, where mise and a plain tar both
+      # find them without a strip-components guess.
+      - name: package
+        run: |
+          name="weave-$VERSION-${{ matrix.target }}"
+          ./out/bin/weave --version
+          tar -czf "$name.tar.gz" -C out/bin weave weave-driver
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: weave-*.tar.gz*
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="weave-v$VERSION"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" \
+            --title "weave $VERSION" \
+            --notes "weave-driver and weave-cli $VERSION from crates.io, built with cargo install --locked. Upstream: https://github.com/Ataraxy-Labs/weave (MIT)."
+          gh release upload "$tag" weave-*.tar.gz* --clobber
